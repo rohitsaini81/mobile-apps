@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 void main() {
   runApp(const CalcNoteApp());
@@ -173,6 +174,41 @@ class _CalcNotePageState extends State<CalcNotePage> {
     _setTextAndCursor(text, (current + delta).clamp(0, text.length));
   }
 
+  void _moveCursorWord(int direction) {
+    final text = _controller.text;
+    final current = _controller.selection.baseOffset >= 0
+        ? _controller.selection.baseOffset
+        : text.length;
+    int next = current;
+
+    bool isWordChar(String c) => RegExp(r'[A-Za-z0-9_]').hasMatch(c);
+
+    if (direction < 0) {
+      if (next == 0) {
+        return;
+      }
+      next--;
+      while (next > 0 && !isWordChar(text[next])) {
+        next--;
+      }
+      while (next > 0 && isWordChar(text[next - 1])) {
+        next--;
+      }
+    } else {
+      if (next >= text.length) {
+        return;
+      }
+      while (next < text.length && !isWordChar(text[next])) {
+        next++;
+      }
+      while (next < text.length && isWordChar(text[next])) {
+        next++;
+      }
+    }
+
+    _setTextAndCursor(text, next.clamp(0, text.length));
+  }
+
   void _evaluateAndAppend() {
     final line = _activeLineText();
     final engine = _CalcEngine([line]);
@@ -213,8 +249,47 @@ class _CalcNotePageState extends State<CalcNotePage> {
   Widget build(BuildContext context) {
     final results = _results;
 
-    return Scaffold(
-      appBar: AppBar(
+    return Shortcuts(
+      shortcuts: <ShortcutActivator, Intent>{
+        const SingleActivator(LogicalKeyboardKey.enter, control: true):
+            const _EvaluateIntent(),
+        const SingleActivator(LogicalKeyboardKey.enter, meta: true):
+            const _EvaluateIntent(),
+        const SingleActivator(LogicalKeyboardKey.escape): const _ClearIntent(),
+        const SingleActivator(LogicalKeyboardKey.arrowLeft, alt: true):
+            const _WordLeftIntent(),
+        const SingleActivator(LogicalKeyboardKey.arrowRight, alt: true):
+            const _WordRightIntent(),
+      },
+      child: Actions(
+        actions: <Type, Action<Intent>>{
+          _EvaluateIntent: CallbackAction<_EvaluateIntent>(
+            onInvoke: (intent) {
+              _evaluateAndAppend();
+              return null;
+            },
+          ),
+          _ClearIntent: CallbackAction<_ClearIntent>(
+            onInvoke: (intent) {
+              _clearLineOrAll();
+              return null;
+            },
+          ),
+          _WordLeftIntent: CallbackAction<_WordLeftIntent>(
+            onInvoke: (intent) {
+              _moveCursorWord(-1);
+              return null;
+            },
+          ),
+          _WordRightIntent: CallbackAction<_WordRightIntent>(
+            onInvoke: (intent) {
+              _moveCursorWord(1);
+              return null;
+            },
+          ),
+        },
+        child: Scaffold(
+          appBar: AppBar(
         elevation: 0,
         title: const Text('CalcNote'),
         bottom: const PreferredSize(
@@ -228,7 +303,7 @@ class _CalcNotePageState extends State<CalcNotePage> {
           ),
         ),
       ),
-      body: SafeArea(
+          body: SafeArea(
         child: Column(
           children: [
             Expanded(
@@ -331,9 +406,27 @@ class _CalcNotePageState extends State<CalcNotePage> {
             _CalcKeypad(onPress: _onKeyPress),
           ],
         ),
+          ),
+        ),
       ),
     );
   }
+}
+
+class _EvaluateIntent extends Intent {
+  const _EvaluateIntent();
+}
+
+class _ClearIntent extends Intent {
+  const _ClearIntent();
+}
+
+class _WordLeftIntent extends Intent {
+  const _WordLeftIntent();
+}
+
+class _WordRightIntent extends Intent {
+  const _WordRightIntent();
 }
 
 class _CalcKeypad extends StatefulWidget {
