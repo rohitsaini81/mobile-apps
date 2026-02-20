@@ -47,6 +47,7 @@ class _CalcNotePageState extends State<CalcNotePage> {
 
   String? _currentFilePath;
   bool _syncing = false;
+  bool _sidebarOpen = false;
 
   @override
   void initState() {
@@ -361,7 +362,21 @@ class _CalcNotePageState extends State<CalcNotePage> {
     await SystemNavigator.pop();
   }
 
-  Widget _buildSidebar({required bool compact}) {
+  void _toggleSidebar() {
+    setState(() {
+      _sidebarOpen = !_sidebarOpen;
+    });
+  }
+
+  void _closeSidebar() {
+    if (_sidebarOpen) {
+      setState(() {
+        _sidebarOpen = false;
+      });
+    }
+  }
+
+  Widget _buildSidebar({required bool compact, required double width}) {
     final actions = <_SidebarAction>[
       _SidebarAction('New', Icons.note_add_outlined, _newNote),
       _SidebarAction('Open', Icons.folder_open_outlined, _openNote),
@@ -372,7 +387,7 @@ class _CalcNotePageState extends State<CalcNotePage> {
     ];
 
     return Container(
-      width: compact ? 76 : 204,
+      width: width,
       padding: const EdgeInsets.fromLTRB(8, 12, 8, 12),
       decoration: const BoxDecoration(
         color: Colors.white,
@@ -396,7 +411,10 @@ class _CalcNotePageState extends State<CalcNotePage> {
             return Padding(
               padding: const EdgeInsets.symmetric(vertical: 2),
               child: FilledButton.tonal(
-                onPressed: () => item.onTap(),
+                onPressed: () async {
+                  await item.onTap();
+                  _closeSidebar();
+                },
                 style: FilledButton.styleFrom(
                   alignment: Alignment.centerLeft,
                   padding: EdgeInsets.symmetric(
@@ -591,6 +609,11 @@ class _CalcNotePageState extends State<CalcNotePage> {
         child: Scaffold(
           appBar: AppBar(
             elevation: 0,
+            leading: IconButton(
+              onPressed: _toggleSidebar,
+              icon: Icon(_sidebarOpen ? Icons.close : Icons.menu),
+              tooltip: _sidebarOpen ? 'Close menu' : 'Open menu',
+            ),
             title: Text(
               _currentFilePath == null
                   ? 'CalcNote'
@@ -610,11 +633,34 @@ class _CalcNotePageState extends State<CalcNotePage> {
           body: SafeArea(
             child: LayoutBuilder(
               builder: (context, constraints) {
-                final compactSidebar = constraints.maxWidth < 980;
-                return Row(
+                final compactSidebar = constraints.maxWidth < 560;
+                final sidebarWidth = compactSidebar ? 220.0 : 260.0;
+                return Stack(
                   children: [
-                    _buildSidebar(compact: compactSidebar),
-                    Expanded(child: _buildMainEditor(results)),
+                    Positioned.fill(child: _buildMainEditor(results)),
+                    if (_sidebarOpen)
+                      Positioned.fill(
+                        child: GestureDetector(
+                          onTap: _closeSidebar,
+                          behavior: HitTestBehavior.opaque,
+                          child: Container(color: const Color(0x30000000)),
+                        ),
+                      ),
+                    AnimatedPositioned(
+                      duration: const Duration(milliseconds: 220),
+                      curve: Curves.easeOutCubic,
+                      top: 0,
+                      bottom: 0,
+                      left: _sidebarOpen ? 0 : -sidebarWidth,
+                      child: Material(
+                        elevation: 10,
+                        color: Colors.transparent,
+                        child: _buildSidebar(
+                          compact: compactSidebar,
+                          width: sidebarWidth,
+                        ),
+                      ),
+                    ),
                   ],
                 );
               },

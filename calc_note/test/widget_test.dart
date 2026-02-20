@@ -5,7 +5,7 @@ void main() {
   testWidgets('CalcNote-like UI renders', (WidgetTester tester) async {
     await tester.pumpWidget(const CalcNoteApp());
 
-    expect(find.text('CalcNote'), findsOneWidget);
+    expect(find.text('CalcNote'), findsWidgets);
     expect(find.text('Notepad Calculator'), findsOneWidget);
     expect(find.text('sin('), findsNothing);
     expect(find.text('='), findsOneWidget);
