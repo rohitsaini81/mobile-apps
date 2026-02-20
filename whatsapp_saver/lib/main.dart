@@ -5,6 +5,13 @@ import 'package:path/path.dart' as p;
 import 'package:permission_handler/permission_handler.dart';
 import 'package:video_player/video_player.dart';
 
+abstract final class AppColors {
+  static const mxBlue = Color(0xFF1686FF);
+  static const deepBlue = Color(0xFF0F4CC0);
+  static const skyBlue = Color(0xFF59B2FF);
+  static const ink = Color(0xFF0D2448);
+}
+
 void main() {
   runApp(const StatusSaverApp());
 }
@@ -20,10 +27,10 @@ class StatusSaverApp extends StatelessWidget {
       theme: ThemeData(
         useMaterial3: true,
         colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFF1686FF),
+          seedColor: AppColors.mxBlue,
           brightness: Brightness.light,
         ),
-        scaffoldBackgroundColor: const Color(0xFFF2F6FF),
+        scaffoldBackgroundColor: const Color(0xFFF1F6FF),
       ),
       home: const StatusHomePage(),
     );
@@ -193,99 +200,171 @@ class _StatusHomePageState extends State<StatusHomePage>
         .toList();
 
     return Scaffold(
-      body: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [Color(0xFFE8F1FF), Color(0xFFF6FAFF)],
+      body: DecoratedBox(
+        decoration: BoxDecoration(
+          gradient: const LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [Color(0xFFE7F2FF), Color(0xFFF8FBFF)],
           ),
+          boxShadow: [
+            BoxShadow(
+              color: AppColors.mxBlue.withValues(alpha: 0.08),
+              blurRadius: 50,
+              spreadRadius: 15,
+            ),
+          ],
         ),
-        child: SafeArea(
-          child: Column(
-            children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
-                child: Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(10),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF1686FF),
-                        borderRadius: BorderRadius.circular(14),
-                      ),
-                      child: const Icon(
-                        Icons.auto_awesome,
-                        color: Colors.white,
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    const Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Status Saver',
-                            style: TextStyle(
-                              fontSize: 23,
-                              fontWeight: FontWeight.w700,
+        child: Stack(
+          children: [
+            Positioned(
+              right: -40,
+              top: -30,
+              child: Container(
+                height: 170,
+                width: 170,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: AppColors.mxBlue.withValues(alpha: 0.14),
+                ),
+              ),
+            ),
+            Positioned(
+              left: -50,
+              top: 90,
+              child: Container(
+                height: 130,
+                width: 130,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: AppColors.deepBlue.withValues(alpha: 0.08),
+                ),
+              ),
+            ),
+            SafeArea(
+              child: Column(
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
+                    child: Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(11),
+                          decoration: BoxDecoration(
+                            gradient: const LinearGradient(
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                              colors: [AppColors.skyBlue, AppColors.mxBlue],
+                            ),
+                            borderRadius: BorderRadius.circular(15),
+                            boxShadow: [
+                              BoxShadow(
+                                color: AppColors.mxBlue.withValues(alpha: 0.3),
+                                blurRadius: 14,
+                                offset: const Offset(0, 6),
+                              ),
+                            ],
+                          ),
+                          child: const Icon(
+                            Icons.play_circle_rounded,
+                            color: Colors.white,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        const Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Status Saver',
+                                style: TextStyle(
+                                  fontSize: 24,
+                                  fontWeight: FontWeight.w800,
+                                  color: AppColors.ink,
+                                ),
+                              ),
+                              Text(
+                                'MX Blue Edition',
+                                style: TextStyle(
+                                  color: Color(0xFF355B93),
+                                  fontWeight: FontWeight.w600,
+                                  letterSpacing: 0.2,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        IconButton(
+                          tooltip: 'Refresh',
+                          onPressed: _loadStatuses,
+                          style: IconButton.styleFrom(
+                            backgroundColor: Colors.white,
+                            foregroundColor: AppColors.mxBlue,
+                            side: BorderSide(
+                              color: AppColors.mxBlue.withValues(alpha: 0.2),
                             ),
                           ),
-                          Text(
-                            'WhatsApp + WA Business',
-                            style: TextStyle(color: Colors.black54),
-                          ),
-                        ],
-                      ),
+                          icon: const Icon(Icons.refresh_rounded, size: 20),
+                        ),
+                      ],
                     ),
-                    IconButton(
-                      tooltip: 'Refresh',
-                      onPressed: _loadStatuses,
-                      icon: const Icon(Icons.refresh_rounded),
-                    ),
-                  ],
-                ),
-              ),
-              _SummaryBar(items: _allItems),
-              const SizedBox(height: 10),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: Material(
-                  borderRadius: BorderRadius.circular(16),
-                  color: Colors.white,
-                  child: TabBar(
-                    controller: _tabController,
-                    indicatorSize: TabBarIndicatorSize.tab,
-                    dividerColor: Colors.transparent,
-                    indicator: BoxDecoration(
-                      color: const Color(0xFF1686FF),
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                    labelColor: Colors.white,
-                    unselectedLabelColor: Colors.black54,
-                    tabs: [
-                      Tab(text: 'Images (${images.length})'),
-                      Tab(text: 'Videos (${videos.length})'),
-                    ],
                   ),
-                ),
-              ),
-              const SizedBox(height: 10),
-              Expanded(
-                child: _loading
-                    ? const Center(child: CircularProgressIndicator())
-                    : _error != null
-                    ? _ErrorView(message: _error!, onRetry: _loadStatuses)
-                    : TabBarView(
+                  _SummaryBar(items: _allItems),
+                  const SizedBox(height: 10),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: Material(
+                      borderRadius: BorderRadius.circular(18),
+                      color: const Color(0xFFDCEBFF),
+                      child: TabBar(
                         controller: _tabController,
-                        children: [
-                          _StatusGrid(items: images, onRefresh: _loadStatuses),
-                          _StatusGrid(items: videos, onRefresh: _loadStatuses),
+                        indicatorSize: TabBarIndicatorSize.tab,
+                        dividerColor: Colors.transparent,
+                        indicator: BoxDecoration(
+                          gradient: const LinearGradient(
+                            begin: Alignment.centerLeft,
+                            end: Alignment.centerRight,
+                            colors: [AppColors.mxBlue, AppColors.deepBlue],
+                          ),
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                        labelColor: Colors.white,
+                        unselectedLabelColor: const Color(0xFF305891),
+                        labelStyle: const TextStyle(
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: 0.2,
+                        ),
+                        tabs: [
+                          Tab(text: 'Images (${images.length})'),
+                          Tab(text: 'Videos (${videos.length})'),
                         ],
                       ),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Expanded(
+                    child: _loading
+                        ? const Center(child: CircularProgressIndicator())
+                        : _error != null
+                        ? _ErrorView(message: _error!, onRetry: _loadStatuses)
+                        : TabBarView(
+                            controller: _tabController,
+                            children: [
+                              _StatusGrid(
+                                items: images,
+                                onRefresh: _loadStatuses,
+                              ),
+                              _StatusGrid(
+                                items: videos,
+                                onRefresh: _loadStatuses,
+                              ),
+                            ],
+                          ),
+                  ),
+                ],
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
@@ -310,16 +389,12 @@ class _SummaryBar extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Row(
         children: [
-          _TagCard(
-            title: 'WhatsApp',
-            count: waCount,
-            color: const Color(0xFF1686FF),
-          ),
+          _TagCard(title: 'WhatsApp', count: waCount, color: AppColors.mxBlue),
           const SizedBox(width: 10),
           _TagCard(
             title: 'WA Business',
             count: businessCount,
-            color: const Color(0xFF2A6CDB),
+            color: const Color(0xFF2A6FE0),
           ),
         ],
       ),
@@ -343,15 +418,22 @@ class _TagCard extends StatelessWidget {
     return Expanded(
       child: Container(
         decoration: BoxDecoration(
-          color: color.withValues(alpha: 0.13),
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: color.withValues(alpha: 0.25)),
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              color.withValues(alpha: 0.22),
+              color.withValues(alpha: 0.1),
+            ],
+          ),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: color.withValues(alpha: 0.3)),
         ),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
         child: Row(
           children: [
             CircleAvatar(
-              radius: 13,
+              radius: 14,
               backgroundColor: color,
               child: Text(
                 '$count',
@@ -364,8 +446,8 @@ class _TagCard extends StatelessWidget {
                 title,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
-                  fontWeight: FontWeight.w600,
-                  color: color.withValues(alpha: 0.95),
+                  fontWeight: FontWeight.w700,
+                  color: color.withValues(alpha: 0.98),
                 ),
               ),
             ),
@@ -417,7 +499,21 @@ class _StatusGrid extends StatelessWidget {
         ),
         itemBuilder: (context, index) {
           final item = items[index];
-          return _StatusCard(item: item);
+          return TweenAnimationBuilder<double>(
+            tween: Tween(begin: 0, end: 1),
+            duration: Duration(milliseconds: 220 + (index % 8) * 45),
+            curve: Curves.easeOutCubic,
+            builder: (context, value, child) {
+              return Opacity(
+                opacity: value,
+                child: Transform.translate(
+                  offset: Offset(0, (1 - value) * 18),
+                  child: child,
+                ),
+              );
+            },
+            child: _StatusCard(item: item),
+          );
         },
       ),
     );
@@ -434,7 +530,7 @@ class _StatusCard extends StatelessWidget {
     final isVideo = item.type == StatusType.video;
 
     return InkWell(
-      borderRadius: BorderRadius.circular(16),
+      borderRadius: BorderRadius.circular(20),
       onTap: () {
         Navigator.of(context).push(
           MaterialPageRoute<void>(
@@ -444,13 +540,14 @@ class _StatusCard extends StatelessWidget {
       },
       child: Ink(
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(20),
           color: Colors.white,
-          boxShadow: const [
+          border: Border.all(color: AppColors.mxBlue.withValues(alpha: 0.12)),
+          boxShadow: [
             BoxShadow(
-              color: Color(0x12000000),
-              blurRadius: 12,
-              offset: Offset(0, 5),
+              color: AppColors.mxBlue.withValues(alpha: 0.16),
+              blurRadius: 18,
+              offset: const Offset(0, 9),
             ),
           ],
         ),
@@ -459,7 +556,7 @@ class _StatusCard extends StatelessWidget {
             Expanded(
               child: ClipRRect(
                 borderRadius: const BorderRadius.vertical(
-                  top: Radius.circular(16),
+                  top: Radius.circular(20),
                 ),
                 child: Stack(
                   fit: StackFit.expand,
@@ -470,7 +567,7 @@ class _StatusCard extends StatelessWidget {
                       Container(
                         decoration: const BoxDecoration(
                           gradient: LinearGradient(
-                            colors: [Color(0xFF163B7A), Color(0xFF2E67CC)],
+                            colors: [Color(0xFF114193), Color(0xFF2B7DF7)],
                             begin: Alignment.topCenter,
                             end: Alignment.bottomCenter,
                           ),
@@ -501,6 +598,24 @@ class _StatusCard extends StatelessWidget {
                             color: Colors.white,
                             fontSize: 10,
                             fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ),
+                    Positioned(
+                      left: 0,
+                      right: 0,
+                      bottom: 0,
+                      child: Container(
+                        height: 44,
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                            colors: [
+                              Colors.transparent,
+                              Colors.black.withValues(alpha: 0.58),
+                            ],
                           ),
                         ),
                       ),
@@ -628,7 +743,7 @@ class _StatusPreviewPageState extends State<StatusPreviewPage> {
       ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _saving ? null : _saveStatus,
-        backgroundColor: const Color(0xFF1686FF),
+        backgroundColor: AppColors.mxBlue,
         foregroundColor: Colors.white,
         icon: _saving
             ? const SizedBox(
