@@ -48,6 +48,7 @@ class _CalcNotePageState extends State<CalcNotePage> {
   String? _currentFilePath;
   bool _syncing = false;
   bool _sidebarOpen = false;
+  bool _editMode = false;
 
   @override
   void initState() {
@@ -368,6 +369,19 @@ class _CalcNotePageState extends State<CalcNotePage> {
     });
   }
 
+  void _toggleEditMode() {
+    final nextMode = !_editMode;
+    setState(() {
+      _editMode = nextMode;
+    });
+    if (nextMode) {
+      _focusNode.requestFocus();
+    } else {
+      SystemChannels.textInput.invokeMethod<void>('TextInput.hide');
+      _focusNode.requestFocus();
+    }
+  }
+
   void _closeSidebar() {
     if (_sidebarOpen) {
       setState(() {
@@ -502,7 +516,7 @@ class _CalcNotePageState extends State<CalcNotePage> {
                   child: TextField(
                     controller: _controller,
                     focusNode: _focusNode,
-                    readOnly: false,
+                    readOnly: !_editMode,
                     showCursor: true,
                     autofocus: true,
                     expands: true,
@@ -511,6 +525,13 @@ class _CalcNotePageState extends State<CalcNotePage> {
                     enableInteractiveSelection: true,
                     keyboardType: TextInputType.multiline,
                     textInputAction: TextInputAction.newline,
+                    onTap: () {
+                      if (!_editMode) {
+                        SystemChannels.textInput.invokeMethod<void>(
+                          'TextInput.hide',
+                        );
+                      }
+                    },
                     style: const TextStyle(
                       fontSize: 19,
                       height: 1.45,
@@ -619,6 +640,15 @@ class _CalcNotePageState extends State<CalcNotePage> {
                   ? 'CalcNote'
                   : 'CalcNote - ${_fileNameFromPath(_currentFilePath!)}',
             ),
+            actions: [
+              IconButton(
+                onPressed: _toggleEditMode,
+                tooltip: _editMode
+                    ? 'Edit mode on (mobile keyboard enabled)'
+                    : 'Edit mode off (calculator keyboard only)',
+                icon: Icon(_editMode ? Icons.edit : Icons.edit_off),
+              ),
+            ],
             bottom: const PreferredSize(
               preferredSize: Size.fromHeight(22),
               child: Padding(
