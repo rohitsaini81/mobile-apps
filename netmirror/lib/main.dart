@@ -1,3 +1,6 @@
+import 'dart:convert';
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 
 void main() {
@@ -11,7 +14,7 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      title: 'Netflix Home',
+      title: 'NetMirror',
       theme: ThemeData(
         brightness: Brightness.dark,
         scaffoldBackgroundColor: Colors.black,
@@ -25,167 +28,150 @@ class MyApp extends StatelessWidget {
   }
 }
 
-class NetflixHomePage extends StatelessWidget {
+class NetflixHomePage extends StatefulWidget {
   const NetflixHomePage({super.key});
+
+  @override
+  State<NetflixHomePage> createState() => _NetflixHomePageState();
+}
+
+class _NetflixHomePageState extends State<NetflixHomePage> {
+  final TmdbClient _tmdbClient = const TmdbClient();
+  late Future<HomeFeed> _homeFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _homeFuture = _loadHomeFeed();
+  }
+
+  Future<HomeFeed> _loadHomeFeed() async {
+    final results = await Future.wait([
+      _tmdbClient.fetchMovies('/discover/movie'),
+      _tmdbClient.fetchMovies('/trending/movie/week'),
+      _tmdbClient.fetchMovies('/movie/popular'),
+      _tmdbClient.fetchMovies('/movie/upcoming'),
+    ]);
+
+    return HomeFeed(
+      discover: results[0],
+      trending: results[1],
+      popular: results[2],
+      upcoming: results[3],
+    );
+  }
+
+  void _reload() {
+    setState(() {
+      _homeFuture = _loadHomeFeed();
+    });
+  }
+
+  Future<void> _openSearch() async {
+    final selectedMovie = await showSearch<Movie?>(
+      context: context,
+      delegate: MovieSearchDelegate(client: _tmdbClient),
+    );
+    if (!mounted || selectedMovie == null) {
+      return;
+    }
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => TitlePreviewPage(item: selectedMovie, client: _tmdbClient),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: CustomScrollView(
-        slivers: [
-          SliverToBoxAdapter(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const _HeroBanner(),
-                const SizedBox(height: 18),
-                _CategoryRow(
-                  title: 'Continue Watching for You',
-                  items: const [
-                    _MediaItem(
-                      title: 'Black Sands',
-                      subtitle: 'Crime • Dark',
-                      year: '2025',
-                      maturity: '16+',
-                      duration: '1h 42m',
-                      description:
-                          'A detective returns to her hometown and unearths a buried conspiracy tied to her own family history.',
-                      palette: [Color(0xFF2E0E0E), Color(0xFF0B0B0B)],
+      body: FutureBuilder<HomeFeed>(
+        future: _homeFuture,
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
+
+          if (snapshot.hasError) {
+            return Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.cloud_off, size: 46, color: Colors.white70),
+                    const SizedBox(height: 10),
+                    const Text(
+                      'Failed to load movies from TMDB.',
+                      style: TextStyle(fontSize: 16),
                     ),
-                    _MediaItem(
-                      title: 'Signal Zero',
-                      subtitle: 'Sci-Fi • Thriller',
-                      year: '2026',
-                      maturity: '13+',
-                      duration: '2h 01m',
-                      description:
-                          'An orbital crew receives a transmission from Earth that should not exist and races to decode the truth.',
-                      palette: [Color(0xFF201A34), Color(0xFF090B14)],
+                    const SizedBox(height: 6),
+                    Text(
+                      '${snapshot.error}',
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(color: Colors.white54, fontSize: 12),
                     ),
-                    _MediaItem(
-                      title: 'Red Harbor',
-                      subtitle: 'Action • Drama',
-                      year: '2024',
-                      maturity: '18+',
-                      duration: '1h 56m',
-                      description:
-                          'A former smuggler fights to protect his city when rival cartels push a fragile peace to collapse.',
-                      palette: [Color(0xFF10233B), Color(0xFF050A13)],
-                    ),
-                    _MediaItem(
-                      title: 'Apex Unit',
-                      subtitle: 'Action • Military',
-                      year: '2026',
-                      maturity: '16+',
-                      duration: '1h 48m',
-                      description:
-                          'An elite rescue team faces a hostage operation that spirals into an international incident.',
-                      palette: [Color(0xFF1E2A10), Color(0xFF0A0D06)],
+                    const SizedBox(height: 16),
+                    FilledButton(
+                      onPressed: _reload,
+                      child: const Text('Retry'),
                     ),
                   ],
                 ),
-                _CategoryRow(
-                  title: 'Trending Now',
-                  items: const [
-                    _MediaItem(
-                      title: 'Vortex',
-                      subtitle: 'Mystery • Sci-Fi',
-                      year: '2026',
-                      maturity: '13+',
-                      duration: '8 Episodes',
-                      description:
-                          'A coastal town is trapped in repeating timelines, and only one journalist remembers each reset.',
-                      palette: [Color(0xFF4C0D0D), Color(0xFF0F0505)],
+              ),
+            );
+          }
+
+          final feed = snapshot.data!;
+          final heroMovie = feed.discover.isNotEmpty
+              ? feed.discover.first
+              : (feed.trending.isNotEmpty ? feed.trending.first : null);
+
+          return CustomScrollView(
+            slivers: [
+              SliverToBoxAdapter(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    HeroBanner(movie: heroMovie, onSearchTap: _openSearch),
+                    const SizedBox(height: 18),
+                    CategoryRow(
+                      title: 'For You',
+                      items: feed.discover,
                     ),
-                    _MediaItem(
-                      title: 'Iron Ledger',
-                      subtitle: 'Crime • Heist',
-                      year: '2025',
-                      maturity: '16+',
-                      duration: '6 Episodes',
-                      description:
-                          'A brilliant forger assembles a team to erase debts by rewriting the world\'s most secure records.',
-                      palette: [Color(0xFF33210A), Color(0xFF0D0905)],
+                    CategoryRow(
+                      title: 'Trending Now',
+                      items: feed.trending,
                     ),
-                    _MediaItem(
-                      title: 'Neon Circuit',
-                      subtitle: 'Cyberpunk • Action',
-                      year: '2024',
-                      maturity: '16+',
-                      duration: '1h 52m',
-                      description:
-                          'A courier with a stolen biochip must survive one night while every gang in the city hunts him.',
-                      palette: [Color(0xFF0B2D3A), Color(0xFF040D11)],
+                    CategoryRow(
+                      title: 'Popular on NetMirror',
+                      items: feed.popular,
                     ),
-                    _MediaItem(
-                      title: 'Kingmaker',
-                      subtitle: 'Historical • Epic',
-                      year: '2025',
-                      maturity: '13+',
-                      duration: '10 Episodes',
-                      description:
-                          'In a fractured empire, one strategist manipulates kings, armies, and faith to build a dynasty.',
-                      palette: [Color(0xFF3A1240), Color(0xFF0D0510)],
+                    CategoryRow(
+                      title: 'Upcoming',
+                      items: feed.upcoming,
                     ),
+                    const SizedBox(height: 24),
                   ],
                 ),
-                _CategoryRow(
-                  title: 'Popular on Netflix',
-                  items: const [
-                    _MediaItem(
-                      title: 'Shadow Crown',
-                      subtitle: 'Fantasy • Adventure',
-                      year: '2023',
-                      maturity: '13+',
-                      duration: '12 Episodes',
-                      description:
-                          'An exiled heir and a reluctant mage begin a journey to reclaim a kingdom from immortal tyrants.',
-                      palette: [Color(0xFF27163F), Color(0xFF090510)],
-                    ),
-                    _MediaItem(
-                      title: 'Deadline',
-                      subtitle: 'Thriller • Political',
-                      year: '2025',
-                      maturity: '16+',
-                      duration: '2h 07m',
-                      description:
-                          'A newsroom uncovers an election plot and has 24 hours to publish before a national blackout.',
-                      palette: [Color(0xFF3D1A1A), Color(0xFF110909)],
-                    ),
-                    _MediaItem(
-                      title: 'Blue Echo',
-                      subtitle: 'Drama • Emotional',
-                      year: '2024',
-                      maturity: '13+',
-                      duration: '1h 44m',
-                      description:
-                          'After a tragic accident, a musician rebuilds his life through a series of anonymous street performances.',
-                      palette: [Color(0xFF183441), Color(0xFF060D10)],
-                    ),
-                    _MediaItem(
-                      title: 'Ground Zero',
-                      subtitle: 'War • Survival',
-                      year: '2025',
-                      maturity: '18+',
-                      duration: '9 Episodes',
-                      description:
-                          'A civilian convoy is stranded behind enemy lines and forced to navigate a collapsing front.',
-                      palette: [Color(0xFF383010), Color(0xFF0C0A04)],
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 24),
-              ],
-            ),
-          ),
-        ],
+              ),
+            ],
+          );
+        },
       ),
     );
   }
 }
 
-class _HeroBanner extends StatelessWidget {
-  const _HeroBanner();
+class HeroBanner extends StatelessWidget {
+  const HeroBanner({
+    super.key,
+    required this.movie,
+    required this.onSearchTap,
+  });
+
+  final Movie? movie;
+  final VoidCallback onSearchTap;
 
   @override
   Widget build(BuildContext context) {
@@ -194,27 +180,34 @@ class _HeroBanner extends StatelessWidget {
       child: Stack(
         fit: StackFit.expand,
         children: [
-          Container(
-            decoration: const BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [
-                  Color(0xFF5B0C0C),
-                  Color(0xFF1B1B1B),
-                  Colors.black,
-                ],
+          if (movie?.backdropUrl != null)
+            Image.network(
+              movie!.backdropUrl!,
+              fit: BoxFit.cover,
+              errorBuilder: (_, error, stackTrace) => const SizedBox.shrink(),
+            )
+          else
+            Container(
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    Color(0xFF5B0C0C),
+                    Color(0xFF1B1B1B),
+                    Colors.black,
+                  ],
+                ),
               ),
             ),
-          ),
           Container(
             decoration: BoxDecoration(
               gradient: LinearGradient(
                 begin: Alignment.topCenter,
                 end: Alignment.bottomCenter,
                 colors: [
-                  Colors.black.withOpacity(0.15),
-                  Colors.black.withOpacity(0.75),
+                  Colors.black.withValues(alpha: 0.2),
+                  Colors.black.withValues(alpha: 0.8),
                 ],
               ),
             ),
@@ -228,7 +221,7 @@ class _HeroBanner extends StatelessWidget {
                   Row(
                     children: [
                       const Text(
-                        'NETFLIX',
+                        'NETMIRROR',
                         style: TextStyle(
                           color: Color(0xFFE50914),
                           fontWeight: FontWeight.w900,
@@ -238,7 +231,7 @@ class _HeroBanner extends StatelessWidget {
                       ),
                       const Spacer(),
                       IconButton(
-                        onPressed: () {},
+                        onPressed: onSearchTap,
                         icon: const Icon(Icons.search, size: 28),
                       ),
                       IconButton(
@@ -257,19 +250,21 @@ class _HeroBanner extends StatelessWidget {
                     ],
                   ),
                   const Spacer(),
-                  const Text(
-                    'THE LAST KINGDOM',
-                    style: TextStyle(
+                  Text(
+                    movie?.title.toUpperCase() ?? 'NO MOVIE',
+                    style: const TextStyle(
                       fontSize: 40,
                       fontWeight: FontWeight.w800,
-                      letterSpacing: 1.4,
+                      letterSpacing: 1.2,
                       height: 0.95,
                     ),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
                   ),
                   const SizedBox(height: 12),
-                  const Text(
-                    'Action • Historical • Epic',
-                    style: TextStyle(
+                  Text(
+                    'Release ${movie?.releaseYear ?? '-'} • Rating ${movie?.voteAverageLabel ?? '-'}',
+                    style: const TextStyle(
                       color: Colors.white70,
                       fontSize: 13,
                       letterSpacing: 0.5,
@@ -327,14 +322,22 @@ class _HeroBanner extends StatelessWidget {
   }
 }
 
-class _CategoryRow extends StatelessWidget {
-  const _CategoryRow({required this.title, required this.items});
+class CategoryRow extends StatelessWidget {
+  const CategoryRow({
+    super.key,
+    required this.title,
+    required this.items,
+  });
 
   final String title;
-  final List<_MediaItem> items;
+  final List<Movie> items;
 
   @override
   Widget build(BuildContext context) {
+    if (items.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
     return Padding(
       padding: const EdgeInsets.only(bottom: 20),
       child: Column(
@@ -349,41 +352,34 @@ class _CategoryRow extends StatelessWidget {
           ),
           const SizedBox(height: 12),
           SizedBox(
-            height: 160,
+            height: 170,
             child: ListView.separated(
               scrollDirection: Axis.horizontal,
               padding: const EdgeInsets.symmetric(horizontal: 16),
-              itemCount: items.length,
-              separatorBuilder: (_, __) => const SizedBox(width: 10),
+              itemCount: items.length > 12 ? 12 : items.length,
+              separatorBuilder: (_, index) => const SizedBox(width: 10),
               itemBuilder: (context, index) {
                 final item = items[index];
                 return GestureDetector(
-                  key: ValueKey('media-card-${item.title}'),
+                  key: ValueKey('media-card-${item.id}'),
                   onTap: () {
                     Navigator.of(context).push(
                       MaterialPageRoute<void>(
-                        builder: (_) => _TitlePreviewPage(item: item),
+                        builder: (_) => TitlePreviewPage(item: item, client: const TmdbClient()),
                       ),
                     );
                   },
-                  child: Container(
+                  child: SizedBox(
                     width: 112,
-                    decoration: BoxDecoration(
+                    child: ClipRRect(
                       borderRadius: BorderRadius.circular(8),
-                      gradient: LinearGradient(
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                        colors: item.palette,
-                      ),
-                    ),
-                    alignment: Alignment.bottomLeft,
-                    padding: const EdgeInsets.all(10),
-                    child: Text(
-                      item.title,
-                      style: const TextStyle(
-                        fontWeight: FontWeight.w700,
-                        fontSize: 12,
-                      ),
+                      child: item.posterUrl != null
+                          ? Image.network(
+                              item.posterUrl!,
+                              fit: BoxFit.cover,
+                              errorBuilder: (_, error, stackTrace) => _FallbackCard(item: item),
+                            )
+                          : _FallbackCard(item: item),
                     ),
                   ),
                 );
@@ -396,10 +392,42 @@ class _CategoryRow extends StatelessWidget {
   }
 }
 
-class _TitlePreviewPage extends StatelessWidget {
-  const _TitlePreviewPage({required this.item});
+class _FallbackCard extends StatelessWidget {
+  const _FallbackCard({required this.item});
 
-  final _MediaItem item;
+  final Movie item;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [Color(0xFF2E0E0E), Color(0xFF0B0B0B)],
+        ),
+      ),
+      alignment: Alignment.bottomLeft,
+      padding: const EdgeInsets.all(10),
+      child: Text(
+        item.title,
+        style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12),
+        maxLines: 2,
+        overflow: TextOverflow.ellipsis,
+      ),
+    );
+  }
+}
+
+class TitlePreviewPage extends StatelessWidget {
+  const TitlePreviewPage({
+    super.key,
+    required this.item,
+    required this.client,
+  });
+
+  final Movie item;
+  final TmdbClient client;
 
   @override
   Widget build(BuildContext context) {
@@ -418,18 +446,22 @@ class _TitlePreviewPage extends StatelessWidget {
               background: Stack(
                 fit: StackFit.expand,
                 children: [
-                  Container(
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                        colors: [
-                          item.palette.first,
-                          item.palette.last,
-                        ],
+                  if (item.backdropUrl != null)
+                    Image.network(
+                      item.backdropUrl!,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, error, stackTrace) => const SizedBox.shrink(),
+                    )
+                  else
+                    Container(
+                      decoration: const BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          colors: [Color(0xFF350909), Colors.black],
+                        ),
                       ),
                     ),
-                  ),
                   Container(
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
@@ -437,7 +469,7 @@ class _TitlePreviewPage extends StatelessWidget {
                         end: Alignment.bottomCenter,
                         colors: [
                           Colors.transparent,
-                          Colors.black.withOpacity(0.85),
+                          Colors.black.withValues(alpha: 0.85),
                         ],
                       ),
                     ),
@@ -447,7 +479,7 @@ class _TitlePreviewPage extends StatelessWidget {
                       width: 64,
                       height: 64,
                       decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.15),
+                        color: Colors.white.withValues(alpha: 0.15),
                         shape: BoxShape.circle,
                         border: Border.all(color: Colors.white54),
                       ),
@@ -478,7 +510,7 @@ class _TitlePreviewPage extends StatelessWidget {
                 children: [
                   Row(
                     children: [
-                      Text(item.year, style: const TextStyle(color: Colors.white70)),
+                      Text(item.releaseYear, style: const TextStyle(color: Colors.white70)),
                       const SizedBox(width: 10),
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
@@ -486,16 +518,19 @@ class _TitlePreviewPage extends StatelessWidget {
                           border: Border.all(color: Colors.white38),
                           borderRadius: BorderRadius.circular(4),
                         ),
-                        child: Text(item.maturity),
+                        child: Text(item.adult ? '18+' : '13+'),
                       ),
                       const SizedBox(width: 10),
-                      Text(item.duration, style: const TextStyle(color: Colors.white70)),
+                      Text('TMDB ${item.voteAverageLabel}', style: const TextStyle(color: Colors.white70)),
                     ],
                   ),
                   const SizedBox(height: 12),
-                  Text(item.subtitle, style: const TextStyle(fontWeight: FontWeight.w600)),
+                  const Text('Movie • TMDB', style: TextStyle(fontWeight: FontWeight.w600)),
                   const SizedBox(height: 10),
-                  Text(item.description, style: const TextStyle(color: Colors.white70, height: 1.4)),
+                  Text(
+                    item.overview.isNotEmpty ? item.overview : 'No description available.',
+                    style: const TextStyle(color: Colors.white70, height: 1.4),
+                  ),
                   const SizedBox(height: 20),
                   FilledButton.icon(
                     onPressed: () {},
@@ -519,40 +554,80 @@ class _TitlePreviewPage extends StatelessWidget {
                     label: const Text('Download'),
                   ),
                   const SizedBox(height: 18),
-                  Row(
+                  const Row(
                     mainAxisAlignment: MainAxisAlignment.spaceAround,
-                    children: const [
-                      _ActionIcon(icon: Icons.add, label: 'My List'),
-                      _ActionIcon(icon: Icons.thumb_up_alt_outlined, label: 'Rate'),
-                      _ActionIcon(icon: Icons.share_outlined, label: 'Share'),
+                    children: [
+                      ActionIcon(icon: Icons.add, label: 'My List'),
+                      ActionIcon(icon: Icons.thumb_up_alt_outlined, label: 'Rate'),
+                      ActionIcon(icon: Icons.share_outlined, label: 'Share'),
                     ],
                   ),
                   const SizedBox(height: 26),
                   const Text(
-                    'Episodes & More Like This',
+                    'More Like This',
                     style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
                   ),
                   const SizedBox(height: 12),
                   SizedBox(
-                    height: 140,
-                    child: ListView.separated(
-                      scrollDirection: Axis.horizontal,
-                      itemCount: 6,
-                      separatorBuilder: (_, __) => const SizedBox(width: 10),
-                      itemBuilder: (context, index) => Container(
-                        width: 150,
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(8),
-                          gradient: LinearGradient(
-                            begin: Alignment.topLeft,
-                            end: Alignment.bottomRight,
-                            colors: [item.palette.first, Colors.black],
-                          ),
-                        ),
-                        alignment: Alignment.bottomLeft,
-                        padding: const EdgeInsets.all(10),
-                        child: Text('Preview ${index + 1}'),
-                      ),
+                    height: 170,
+                    child: FutureBuilder<List<Movie>>(
+                      future: client.fetchRecommendations(item.id),
+                      builder: (context, snapshot) {
+                        if (snapshot.connectionState == ConnectionState.waiting) {
+                          return const Center(child: CircularProgressIndicator(strokeWidth: 2));
+                        }
+                        if (snapshot.hasError) {
+                          return const Center(
+                            child: Text(
+                              'Could not load suggestions.',
+                              style: TextStyle(color: Colors.white70),
+                            ),
+                          );
+                        }
+                        final suggestions = snapshot.data ?? const <Movie>[];
+                        if (suggestions.isEmpty) {
+                          return const Center(
+                            child: Text(
+                              'No suggestions available.',
+                              style: TextStyle(color: Colors.white70),
+                            ),
+                          );
+                        }
+                        return ListView.separated(
+                          scrollDirection: Axis.horizontal,
+                          itemCount: suggestions.length > 12 ? 12 : suggestions.length,
+                          separatorBuilder: (_, index) => const SizedBox(width: 10),
+                          itemBuilder: (context, index) {
+                            final suggestion = suggestions[index];
+                            return GestureDetector(
+                              onTap: () {
+                                Navigator.of(context).pushReplacement(
+                                  MaterialPageRoute<void>(
+                                    builder: (_) => TitlePreviewPage(
+                                      item: suggestion,
+                                      client: client,
+                                    ),
+                                  ),
+                                );
+                              },
+                              child: SizedBox(
+                                width: 112,
+                                child: ClipRRect(
+                                  borderRadius: BorderRadius.circular(8),
+                                  child: suggestion.posterUrl != null
+                                      ? Image.network(
+                                          suggestion.posterUrl!,
+                                          fit: BoxFit.cover,
+                                          errorBuilder: (_, error, stackTrace) =>
+                                              _FallbackCard(item: suggestion),
+                                        )
+                                      : _FallbackCard(item: suggestion),
+                                ),
+                              ),
+                            );
+                          },
+                        );
+                      },
                     ),
                   ),
                   const SizedBox(height: 24),
@@ -566,8 +641,8 @@ class _TitlePreviewPage extends StatelessWidget {
   }
 }
 
-class _ActionIcon extends StatelessWidget {
-  const _ActionIcon({required this.icon, required this.label});
+class ActionIcon extends StatelessWidget {
+  const ActionIcon({super.key, required this.icon, required this.label});
 
   final IconData icon;
   final String label;
@@ -584,22 +659,262 @@ class _ActionIcon extends StatelessWidget {
   }
 }
 
-class _MediaItem {
-  const _MediaItem({
+class TmdbClient {
+  const TmdbClient();
+
+  static const String _baseUrl = 'https://api.themoviedb.org/3';
+  static const String _apiKey = String.fromEnvironment('TMDB_API_KEY');
+
+  Future<List<Movie>> fetchMovies(String path, {int page = 1}) {
+    return _fetchMovies(
+      path,
+      queryParameters: {
+        'page': '$page',
+        'include_adult': 'false',
+      },
+    );
+  }
+
+  Future<List<Movie>> searchMovies(String query, {int page = 1}) {
+    return _fetchMovies(
+      '/search/movie',
+      queryParameters: {
+        'query': query,
+        'page': '$page',
+        'include_adult': 'false',
+      },
+    );
+  }
+
+  Future<List<Movie>> fetchRecommendations(int movieId, {int page = 1}) {
+    return _fetchMovies(
+      '/movie/$movieId/recommendations',
+      queryParameters: {
+        'page': '$page',
+        'include_adult': 'false',
+      },
+    );
+  }
+
+  Future<List<Movie>> _fetchMovies(
+    String path, {
+    Map<String, String> queryParameters = const {},
+  }) async {
+    if (_apiKey.isEmpty) {
+      throw const FormatException(
+        'Missing TMDB_API_KEY. Run with --dart-define=TMDB_API_KEY=<your_key>.',
+      );
+    }
+
+    final uri = Uri.parse('$_baseUrl$path').replace(
+      queryParameters: {
+        'api_key': _apiKey,
+        ...queryParameters,
+      },
+    );
+
+    final client = HttpClient();
+    try {
+      final request = await client.getUrl(uri);
+      final response = await request.close();
+      final body = await response.transform(utf8.decoder).join();
+
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        throw HttpException('TMDB request failed (${response.statusCode}): $body');
+      }
+
+      final decoded = jsonDecode(body);
+      if (decoded is! Map<String, dynamic>) {
+        throw const FormatException('Unexpected TMDB response format.');
+      }
+
+      final results = decoded['results'];
+      if (results is! List) {
+        return [];
+      }
+
+      return results
+          .whereType<Map<String, dynamic>>()
+          .map(Movie.fromJson)
+          .where((movie) => movie.title.isNotEmpty)
+          .toList();
+    } finally {
+      client.close(force: true);
+    }
+  }
+}
+
+class MovieSearchDelegate extends SearchDelegate<Movie?> {
+  MovieSearchDelegate({required this.client});
+
+  final TmdbClient client;
+
+  @override
+  String get searchFieldLabel => 'Search movies';
+
+  @override
+  List<Widget>? buildActions(BuildContext context) {
+    return [
+      if (query.isNotEmpty)
+        IconButton(
+          onPressed: () => query = '',
+          icon: const Icon(Icons.clear),
+        ),
+    ];
+  }
+
+  @override
+  Widget? buildLeading(BuildContext context) {
+    return IconButton(
+      onPressed: () => close(context, null),
+      icon: const Icon(Icons.arrow_back),
+    );
+  }
+
+  @override
+  Widget buildResults(BuildContext context) {
+    return _buildResultsView();
+  }
+
+  @override
+  Widget buildSuggestions(BuildContext context) {
+    return _buildResultsView();
+  }
+
+  Widget _buildResultsView() {
+    final value = query.trim();
+    if (value.isEmpty) {
+      return const Center(
+        child: Text(
+          'Search for a movie title',
+          style: TextStyle(color: Colors.white70),
+        ),
+      );
+    }
+
+    return FutureBuilder<List<Movie>>(
+      future: client.searchMovies(value),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        if (snapshot.hasError) {
+          return Center(
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Text(
+                '${snapshot.error}',
+                textAlign: TextAlign.center,
+                style: const TextStyle(color: Colors.white70),
+              ),
+            ),
+          );
+        }
+        final results = snapshot.data ?? const <Movie>[];
+        if (results.isEmpty) {
+          return Center(
+            child: Text(
+              'No results found for "$value".',
+              style: const TextStyle(color: Colors.white70),
+            ),
+          );
+        }
+        return ListView.separated(
+          itemCount: results.length,
+          separatorBuilder: (_, index) => const Divider(height: 0, color: Color(0xFF262626)),
+          itemBuilder: (context, index) {
+            final movie = results[index];
+            return ListTile(
+              contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              leading: SizedBox(
+                width: 48,
+                child: movie.posterUrl != null
+                    ? ClipRRect(
+                        borderRadius: BorderRadius.circular(4),
+                        child: Image.network(
+                          movie.posterUrl!,
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, error, stackTrace) => const Icon(Icons.movie),
+                        ),
+                      )
+                    : const Icon(Icons.movie),
+              ),
+              title: Text(
+                movie.title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+              subtitle: Text(
+                '${movie.releaseYear} • TMDB ${movie.voteAverageLabel}',
+                style: const TextStyle(color: Colors.white70),
+              ),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => close(context, movie),
+            );
+          },
+        );
+      },
+    );
+  }
+}
+
+class Movie {
+  const Movie({
+    required this.id,
     required this.title,
-    required this.subtitle,
-    required this.year,
-    required this.maturity,
-    required this.duration,
-    required this.description,
-    required this.palette,
+    required this.overview,
+    required this.posterPath,
+    required this.backdropPath,
+    required this.releaseDate,
+    required this.voteAverage,
+    required this.adult,
   });
 
+  final int id;
   final String title;
-  final String subtitle;
-  final String year;
-  final String maturity;
-  final String duration;
-  final String description;
-  final List<Color> palette;
+  final String overview;
+  final String posterPath;
+  final String backdropPath;
+  final String releaseDate;
+  final double voteAverage;
+  final bool adult;
+
+  factory Movie.fromJson(Map<String, dynamic> json) {
+    return Movie(
+      id: (json['id'] as num?)?.toInt() ?? 0,
+      title: (json['title'] ?? json['name'] ?? '').toString(),
+      overview: (json['overview'] ?? '').toString(),
+      posterPath: (json['poster_path'] ?? '').toString(),
+      backdropPath: (json['backdrop_path'] ?? '').toString(),
+      releaseDate: (json['release_date'] ?? json['first_air_date'] ?? '').toString(),
+      voteAverage: (json['vote_average'] as num?)?.toDouble() ?? 0,
+      adult: json['adult'] == true,
+    );
+  }
+
+  String? get posterUrl => posterPath.isNotEmpty
+      ? 'https://image.tmdb.org/t/p/w500$posterPath'
+      : null;
+
+  String? get backdropUrl => backdropPath.isNotEmpty
+      ? 'https://image.tmdb.org/t/p/w780$backdropPath'
+      : null;
+
+  String get releaseYear => releaseDate.length >= 4 ? releaseDate.substring(0, 4) : '-';
+
+  String get voteAverageLabel => voteAverage.toStringAsFixed(1);
+}
+
+class HomeFeed {
+  const HomeFeed({
+    required this.discover,
+    required this.trending,
+    required this.popular,
+    required this.upcoming,
+  });
+
+  final List<Movie> discover;
+  final List<Movie> trending;
+  final List<Movie> popular;
+  final List<Movie> upcoming;
 }
