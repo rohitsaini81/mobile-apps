@@ -1,5 +1,7 @@
+import 'dart:io';
 import 'dart:math' as math;
 
+import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -40,8 +42,10 @@ class _CalcNotePageState extends State<CalcNotePage> {
   );
   final FocusNode _focusNode = FocusNode();
   final ScrollController _noteScroll = ScrollController();
+  final ScrollController _leftScroll = ScrollController();
   final ScrollController _resultScroll = ScrollController();
 
+  String? _currentFilePath;
   bool _syncing = false;
 
   @override
@@ -58,6 +62,7 @@ class _CalcNotePageState extends State<CalcNotePage> {
     _controller.dispose();
     _focusNode.dispose();
     _noteScroll.dispose();
+    _leftScroll.dispose();
     _resultScroll.dispose();
     super.dispose();
   }
@@ -69,13 +74,24 @@ class _CalcNotePageState extends State<CalcNotePage> {
   }
 
   void _syncScroll() {
-    if (_syncing || !_resultScroll.hasClients) {
+    if (_syncing) {
       return;
     }
+
     _syncing = true;
-    _resultScroll.jumpTo(
-      _noteScroll.offset.clamp(0.0, _resultScroll.position.maxScrollExtent),
-    );
+    final offset = _noteScroll.offset;
+
+    if (_leftScroll.hasClients) {
+      _leftScroll.jumpTo(
+        offset.clamp(0.0, _leftScroll.position.maxScrollExtent),
+      );
+    }
+    if (_resultScroll.hasClients) {
+      _resultScroll.jumpTo(
+        offset.clamp(0.0, _resultScroll.position.maxScrollExtent),
+      );
+    }
+
     _syncing = false;
   }
 
@@ -144,7 +160,9 @@ class _CalcNotePageState extends State<CalcNotePage> {
   void _clearLineOrAll() {
     final text = _controller.text;
     final selection = _controller.selection;
-    final cursor = selection.baseOffset >= 0 ? selection.baseOffset : text.length;
+    final cursor = selection.baseOffset >= 0
+        ? selection.baseOffset
+        : text.length;
 
     int start = cursor;
     while (start > 0 && text[start - 1] != '\n') {
@@ -216,6 +234,7 @@ class _CalcNotePageState extends State<CalcNotePage> {
     if (!result.hasValue) {
       return;
     }
+
     _newline();
     _insert(result.display);
   }
@@ -243,6 +262,287 @@ class _CalcNotePageState extends State<CalcNotePage> {
       default:
         _insert(key);
     }
+  }
+
+  String _fileNameFromPath(String path) {
+    final normalized = path.replaceAll('\\', '/');
+    final parts = normalized.split('/');
+    return parts.isEmpty ? path : parts.last;
+  }
+
+  Future<void> _newNote() async {
+    _setTextAndCursor('', 0);
+    setState(() {
+      _currentFilePath = null;
+    });
+  }
+
+  Future<void> _openNote() async {
+    const group = XTypeGroup(
+      label: 'Text files',
+      extensions: <String>['txt', 'md', 'note'],
+    );
+
+    final file = await openFile(acceptedTypeGroups: <XTypeGroup>[group]);
+    if (file == null) {
+      return;
+    }
+
+    final text = await file.readAsString();
+    _setTextAndCursor(text, text.length);
+    setState(() {
+      _currentFilePath = file.path;
+    });
+  }
+
+  Future<void> _saveNote() async {
+    if (_currentFilePath == null) {
+      await _saveAsNote();
+      return;
+    }
+
+    await File(_currentFilePath!).writeAsString(_controller.text);
+    if (!mounted) {
+      return;
+    }
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('Saved')));
+  }
+
+  Future<void> _saveAsNote() async {
+    final suggested = _currentFilePath == null
+        ? 'note.txt'
+        : _fileNameFromPath(_currentFilePath!);
+
+    final location = await getSaveLocation(suggestedName: suggested);
+    if (location == null) {
+      return;
+    }
+
+    await File(location.path).writeAsString(_controller.text);
+    setState(() {
+      _currentFilePath = location.path;
+    });
+
+    if (!mounted) {
+      return;
+    }
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text('Saved as ${location.path}')));
+  }
+
+  Future<void> _showHelp() async {
+    await showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Help'),
+        content: const Text(
+          'Ctrl/Cmd + Enter: Evaluate current line\n'
+          'Esc: Clear current line\n'
+          'Alt + Left/Right: Move cursor by word\n\n'
+          'Use the side menu for New/Open/Save operations.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _quitApp() async {
+    if (Platform.isLinux || Platform.isWindows || Platform.isMacOS) {
+      exit(0);
+    }
+    await SystemNavigator.pop();
+  }
+
+  Widget _buildSidebar({required bool compact}) {
+    final actions = <_SidebarAction>[
+      _SidebarAction('New', Icons.note_add_outlined, _newNote),
+      _SidebarAction('Open', Icons.folder_open_outlined, _openNote),
+      _SidebarAction('Save', Icons.save_outlined, _saveNote),
+      _SidebarAction('Save as', Icons.save_as_outlined, _saveAsNote),
+      _SidebarAction('Help', Icons.help_outline, _showHelp),
+      _SidebarAction('Quit', Icons.exit_to_app, _quitApp),
+    ];
+
+    return Container(
+      width: compact ? 76 : 204,
+      padding: const EdgeInsets.fromLTRB(8, 12, 8, 12),
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        border: Border(right: BorderSide(color: Color(0xFFE2E8F0))),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(8, 8, 8, 14),
+            child: Text(
+              compact ? 'CN' : 'CalcNote',
+              style: const TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.w700,
+                color: Color(0xFF1E3A6D),
+              ),
+            ),
+          ),
+          ...actions.map((item) {
+            return Padding(
+              padding: const EdgeInsets.symmetric(vertical: 2),
+              child: FilledButton.tonal(
+                onPressed: () => item.onTap(),
+                style: FilledButton.styleFrom(
+                  alignment: Alignment.centerLeft,
+                  padding: EdgeInsets.symmetric(
+                    horizontal: compact ? 10 : 12,
+                    vertical: 12,
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                ),
+                child: Row(
+                  mainAxisAlignment: compact
+                      ? MainAxisAlignment.center
+                      : MainAxisAlignment.start,
+                  children: [
+                    Icon(item.icon, size: 20),
+                    if (!compact) ...[
+                      const SizedBox(width: 10),
+                      Text(item.label),
+                    ],
+                  ],
+                ),
+              ),
+            );
+          }),
+          const Spacer(),
+          if (!compact)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(8, 4, 8, 2),
+              child: Text(
+                _currentFilePath == null
+                    ? 'Unsaved note'
+                    : _fileNameFromPath(_currentFilePath!),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontSize: 12, color: Color(0xFF64748B)),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMainEditor(List<String> results) {
+    return Column(
+      children: [
+        Expanded(
+          child: Container(
+            margin: const EdgeInsets.fromLTRB(12, 12, 12, 8),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(14),
+              boxShadow: const [
+                BoxShadow(
+                  color: Color(0x14000000),
+                  blurRadius: 10,
+                  offset: Offset(0, 3),
+                ),
+              ],
+            ),
+            child: Row(
+              children: [
+                SizedBox(
+                  width: 34,
+                  child: ListView.builder(
+                    controller: _leftScroll,
+                    itemCount: _lines.length,
+                    padding: const EdgeInsets.only(top: 16),
+                    itemBuilder: (context, index) {
+                      return SizedBox(
+                        height: _lineHeight,
+                        child: Text(
+                          '${index + 1}',
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                            fontSize: 13,
+                            color: Color(0xFF94A3B8),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+                Expanded(
+                  child: TextField(
+                    controller: _controller,
+                    focusNode: _focusNode,
+                    readOnly: false,
+                    showCursor: true,
+                    autofocus: true,
+                    expands: true,
+                    maxLines: null,
+                    scrollController: _noteScroll,
+                    enableInteractiveSelection: true,
+                    keyboardType: TextInputType.multiline,
+                    textInputAction: TextInputAction.newline,
+                    style: const TextStyle(
+                      fontSize: 19,
+                      height: 1.45,
+                      letterSpacing: 0.2,
+                    ),
+                    textAlignVertical: TextAlignVertical.top,
+                    decoration: const InputDecoration(
+                      border: InputBorder.none,
+                      contentPadding: EdgeInsets.fromLTRB(4, 16, 8, 16),
+                    ),
+                  ),
+                ),
+                Container(
+                  width: 128,
+                  padding: const EdgeInsets.fromLTRB(8, 16, 12, 16),
+                  decoration: const BoxDecoration(
+                    border: Border(left: BorderSide(color: Color(0xFFE2E8F0))),
+                  ),
+                  child: ListView.builder(
+                    controller: _resultScroll,
+                    itemCount: results.length,
+                    padding: EdgeInsets.zero,
+                    itemBuilder: (context, index) {
+                      return SizedBox(
+                        height: _lineHeight,
+                        child: Align(
+                          alignment: Alignment.centerRight,
+                          child: Text(
+                            results[index],
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 16,
+                              color: results[index] == 'Error'
+                                  ? const Color(0xFFB91C1C)
+                                  : const Color(0xFF64748B),
+                            ),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        _CalcKeypad(onPress: _onKeyPress),
+      ],
+    );
   }
 
   @override
@@ -290,122 +590,35 @@ class _CalcNotePageState extends State<CalcNotePage> {
         },
         child: Scaffold(
           appBar: AppBar(
-        elevation: 0,
-        title: const Text('CalcNote'),
-        bottom: const PreferredSize(
-          preferredSize: Size.fromHeight(22),
-          child: Padding(
-            padding: EdgeInsets.only(bottom: 8),
-            child: Text(
-              'Notepad Calculator',
-              style: TextStyle(color: Color(0xFF64748B), fontSize: 13),
+            elevation: 0,
+            title: Text(
+              _currentFilePath == null
+                  ? 'CalcNote'
+                  : 'CalcNote - ${_fileNameFromPath(_currentFilePath!)}',
             ),
-          ),
-        ),
-      ),
-          body: SafeArea(
-        child: Column(
-          children: [
-            Expanded(
-              child: Container(
-                margin: const EdgeInsets.fromLTRB(12, 12, 12, 8),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(14),
-                  boxShadow: const [
-                    BoxShadow(
-                      color: Color(0x14000000),
-                      blurRadius: 10,
-                      offset: Offset(0, 3),
-                    ),
-                  ],
-                ),
-                child: Row(
-                  children: [
-                    SizedBox(
-                      width: 34,
-                      child: ListView.builder(
-                        controller: _resultScroll,
-                        itemCount: _lines.length,
-                        padding: const EdgeInsets.only(top: 16),
-                        itemBuilder: (context, index) {
-                          return SizedBox(
-                            height: _lineHeight,
-                            child: Text(
-                              '${index + 1}',
-                              textAlign: TextAlign.center,
-                              style: const TextStyle(
-                                fontSize: 13,
-                                color: Color(0xFF94A3B8),
-                              ),
-                            ),
-                          );
-                        },
-                      ),
-                    ),
-                    Expanded(
-                      child: TextField(
-                        controller: _controller,
-                        focusNode: _focusNode,
-                        readOnly: false,
-                        showCursor: true,
-                        autofocus: true,
-                        expands: true,
-                        maxLines: null,
-                        scrollController: _noteScroll,
-                        enableInteractiveSelection: true,
-                        keyboardType: TextInputType.multiline,
-                        textInputAction: TextInputAction.newline,
-                        style: const TextStyle(
-                          fontSize: 19,
-                          height: 1.45,
-                          letterSpacing: 0.2,
-                        ),
-                        textAlignVertical: TextAlignVertical.top,
-                        decoration: const InputDecoration(
-                          border: InputBorder.none,
-                          contentPadding: EdgeInsets.fromLTRB(4, 16, 8, 16),
-                        ),
-                      ),
-                    ),
-                    Container(
-                      width: 128,
-                      padding: const EdgeInsets.fromLTRB(8, 16, 12, 16),
-                      decoration: const BoxDecoration(
-                        border: Border(left: BorderSide(color: Color(0xFFE2E8F0))),
-                      ),
-                      child: ListView.builder(
-                        controller: _resultScroll,
-                        itemCount: results.length,
-                        padding: EdgeInsets.zero,
-                        itemBuilder: (context, index) {
-                          return SizedBox(
-                            height: _lineHeight,
-                            child: Align(
-                              alignment: Alignment.centerRight,
-                              child: Text(
-                                results[index],
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                  fontSize: 16,
-                                  color: results[index] == 'Error'
-                                      ? const Color(0xFFB91C1C)
-                                      : const Color(0xFF64748B),
-                                ),
-                              ),
-                            ),
-                          );
-                        },
-                      ),
-                    ),
-                  ],
+            bottom: const PreferredSize(
+              preferredSize: Size.fromHeight(22),
+              child: Padding(
+                padding: EdgeInsets.only(bottom: 8),
+                child: Text(
+                  'Notepad Calculator',
+                  style: TextStyle(color: Color(0xFF64748B), fontSize: 13),
                 ),
               ),
             ),
-            _CalcKeypad(onPress: _onKeyPress),
-          ],
-        ),
+          ),
+          body: SafeArea(
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final compactSidebar = constraints.maxWidth < 980;
+                return Row(
+                  children: [
+                    _buildSidebar(compact: compactSidebar),
+                    Expanded(child: _buildMainEditor(results)),
+                  ],
+                );
+              },
+            ),
           ),
         ),
       ),
@@ -427,6 +640,14 @@ class _WordLeftIntent extends Intent {
 
 class _WordRightIntent extends Intent {
   const _WordRightIntent();
+}
+
+class _SidebarAction {
+  const _SidebarAction(this.label, this.icon, this.onTap);
+
+  final String label;
+  final IconData icon;
+  final Future<void> Function() onTap;
 }
 
 class _CalcKeypad extends StatefulWidget {
@@ -493,8 +714,11 @@ class _CalcKeypadState extends State<_CalcKeypad> {
                                         accent: key == '=',
                                         secondary: _isSecondary(key),
                                         onTap: () => widget.onPress(
-                                          key == 'pi' ? '3.1415926535' :
-                                          key == 'e' ? '2.7182818284' : key,
+                                          key == 'pi'
+                                              ? '3.1415926535'
+                                              : key == 'e'
+                                              ? '2.7182818284'
+                                              : key,
                                         ),
                                       ),
                                     ),
@@ -598,7 +822,9 @@ class _KeyButton extends StatelessWidget {
           elevation: 0,
           backgroundColor: bg,
           foregroundColor: fg,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
         ),
         child: FittedBox(
           fit: BoxFit.scaleDown,
@@ -672,8 +898,9 @@ class _CalcEngine {
       return null;
     }
 
-    final assign = RegExp(r'^([a-zA-Z_][a-zA-Z0-9_]*)\s*=\s*(.+)$')
-        .firstMatch(trimmed);
+    final assign = RegExp(
+      r'^([a-zA-Z_][a-zA-Z0-9_]*)\s*=\s*(.+)$',
+    ).firstMatch(trimmed);
     if (assign != null) {
       return _ParsedLine(assign.group(2)!, variableName: assign.group(1));
     }
@@ -720,7 +947,9 @@ String _formatNumber(double value) {
     return value.toInt().toString();
   }
   final fixed = value.toStringAsFixed(10);
-  return fixed.replaceFirst(RegExp(r'0+$'), '').replaceFirst(RegExp(r'\.$'), '');
+  return fixed
+      .replaceFirst(RegExp(r'0+$'), '')
+      .replaceFirst(RegExp(r'\.$'), '');
 }
 
 class _ExpressionParser {
@@ -816,7 +1045,9 @@ class _ExpressionParser {
       if (ident == 'e') {
         return _applyPercent(math.e);
       }
-      return _applyPercent(vars[ident] ?? (throw const FormatException('Unknown variable')));
+      return _applyPercent(
+        vars[ident] ?? (throw const FormatException('Unknown variable')),
+      );
     }
 
     final number = _parseNumber();
