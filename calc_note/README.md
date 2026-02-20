@@ -1,17 +1,38 @@
-# calc_note
+# CalcNote
 
-A new Flutter project.
+A CalcNote-inspired notepad calculator built with Flutter.
 
-## Getting Started
+## Features
 
-This project is a starting point for a Flutter application.
+- write calculations like notes (multi-line editor)
+- instant line-by-line results
+- variables (example: `total = 12*5 + shipping`)
+- line references via `$<line_number>`
+- scientific functions (`sin`, `cos`, `tan`, `sqrt`, `log`, `ln`, `abs`)
+- two-page calculator keypad
+- desktop keyboard editing with visible cursor
+- shortcuts:
+  - `Ctrl/Cmd + Enter`: evaluate current line and append result
+  - `Esc`: clear current line
+  - `Alt + Left/Right`: move cursor by word
+- foldable slide sidebar menu:
+  - New, Open, Save, Save as, Help, Quit
 
-A few resources to get you started if this is your first Flutter project:
+## Tech
 
-- [Learn Flutter](https://docs.flutter.dev/get-started/learn-flutter)
-- [Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Flutter learning resources](https://docs.flutter.dev/reference/learning-resources)
+- Flutter (Material 3)
+- `file_selector` for Open/Save dialogs
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+## Run
+
+```bash
+flutter pub get
+flutter run
+```
+
+## Validate
+
+```bash
+flutter analyze
+flutter test
+```
