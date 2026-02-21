@@ -72,6 +72,21 @@ class _StatusHomePageState extends State<StatusHomePage>
   List<StatusItem> _allItems = const [];
   bool _loading = true;
   String? _error;
+  static const List<(String, StatusSource)> _statusDirs = [
+    ('/storage/emulated/0/WhatsApp/Media/.Statuses', StatusSource.whatsapp),
+    (
+      '/storage/emulated/0/Android/media/com.whatsapp/WhatsApp/Media/.Statuses',
+      StatusSource.whatsapp,
+    ),
+    (
+      '/storage/emulated/0/WhatsApp Business/Media/.Statuses',
+      StatusSource.business,
+    ),
+    (
+      '/storage/emulated/0/Android/media/com.whatsapp.w4b/WhatsApp Business/Media/.Statuses',
+      StatusSource.business,
+    ),
+  ];
 
   @override
   void initState() {
@@ -99,48 +114,40 @@ class _StatusHomePageState extends State<StatusHomePage>
       }
       setState(() {
         _loading = false;
-        _error = 'Storage permission is required to read status folders.';
+        _error =
+            'Cannot access status folders.\nAllow "All files access" for this app and retry.';
       });
       return;
     }
 
     try {
       final items = <StatusItem>[];
-      final dirs = <(String, StatusSource)>[
-        ('/storage/emulated/0/WhatsApp/Media/.Statuses', StatusSource.whatsapp),
-        (
-          '/storage/emulated/0/Android/media/com.whatsapp/WhatsApp/Media/.Statuses',
-          StatusSource.whatsapp,
-        ),
-        (
-          '/storage/emulated/0/WhatsApp Business/Media/.Statuses',
-          StatusSource.business,
-        ),
-        (
-          '/storage/emulated/0/Android/media/com.whatsapp.w4b/WhatsApp Business/Media/.Statuses',
-          StatusSource.business,
-        ),
-      ];
-
-      for (final entry in dirs) {
+      for (final entry in _statusDirs) {
         final dir = Directory(entry.$1);
         if (!await dir.exists()) {
           continue;
         }
-        final entities = dir.listSync().whereType<File>();
-        for (final file in entities) {
-          final ext = p.extension(file.path).toLowerCase();
-          if (_isImage(ext) || _isVideo(ext)) {
-            final stat = await file.stat();
-            items.add(
-              StatusItem(
-                file: file,
-                type: _isImage(ext) ? StatusType.image : StatusType.video,
-                source: entry.$2,
-                modified: stat.modified,
-              ),
-            );
+        try {
+          await for (final entity in dir.list(followLinks: false)) {
+            if (entity is! File) {
+              continue;
+            }
+            final ext = p.extension(entity.path).toLowerCase();
+            if (_isImage(ext) || _isVideo(ext)) {
+              final stat = await entity.stat();
+              items.add(
+                StatusItem(
+                  file: entity,
+                  type: _isImage(ext) ? StatusType.image : StatusType.video,
+                  source: entry.$2,
+                  modified: stat.modified,
+                ),
+              );
+            }
           }
+        } on FileSystemException {
+          // Some OEM/Android versions block individual folders; continue scanning others.
+          continue;
         }
       }
 
@@ -179,15 +186,46 @@ class _StatusHomePageState extends State<StatusHomePage>
       Permission.storage,
     ].request();
 
-    final hasMediaPermission = mediaStatuses.values.any(
+    final hasBasicMediaPermission = mediaStatuses.values.any(
       (status) => status.isGranted || status.isLimited,
     );
-    if (hasMediaPermission) {
+
+    var manageStatus = await Permission.manageExternalStorage.status;
+    if (!manageStatus.isGranted) {
+      manageStatus = await Permission.manageExternalStorage.request();
+    }
+
+    final hasAllFilesAccess = manageStatus.isGranted;
+    if (hasAllFilesAccess) {
       return true;
     }
 
-    final manageStorage = await Permission.manageExternalStorage.request();
-    return manageStorage.isGranted;
+    final canReadStatusDirs = await _canReadStatusDirectories();
+    if (hasBasicMediaPermission && canReadStatusDirs) {
+      return true;
+    }
+
+    return false;
+  }
+
+  Future<bool> _canReadStatusDirectories() async {
+    var foundExisting = false;
+    for (final entry in _statusDirs) {
+      final dir = Directory(entry.$1);
+      if (!await dir.exists()) {
+        continue;
+      }
+      foundExisting = true;
+      try {
+        await dir.list(followLinks: false).take(1).drain<void>();
+      } on FileSystemException {
+        continue;
+      }
+      return true;
+    }
+
+    // If folders don't exist yet, treat this as readable so UI can show empty state.
+    return !foundExisting;
   }
 
   @override
