@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -46,19 +47,12 @@ class _NetflixHomePageState extends State<NetflixHomePage> {
   }
 
   Future<HomeFeed> _loadHomeFeed() async {
-    final results = await Future.wait([
-      _tmdbClient.fetchMovies('/discover/movie'),
-      _tmdbClient.fetchMovies('/trending/movie/week'),
-      _tmdbClient.fetchMovies('/movie/popular'),
-      _tmdbClient.fetchMovies('/movie/upcoming'),
-    ]);
+    final discover = await _tmdbClient.fetchMovies('/discover/movie');
+    final trending = await _tmdbClient.fetchMovies('/trending/movie/week');
+    final popular = await _tmdbClient.fetchMovies('/movie/popular');
+    final upcoming = await _tmdbClient.fetchMovies('/movie/upcoming');
 
-    return HomeFeed(
-      discover: results[0],
-      trending: results[1],
-      popular: results[2],
-      upcoming: results[3],
-    );
+    return HomeFeed(discover: discover, trending: trending, popular: popular, upcoming: upcoming);
   }
 
   void _reload() {
@@ -663,8 +657,11 @@ class TmdbClient {
   const TmdbClient();
 
   static const String _baseUrl = 'https://api.themoviedb.org/3';
-  static const String _apiKey = String.fromEnvironment('TMDB_API_KEY');
-
+  //static const String _apiKey = String.fromEnvironment('TMDB_API_KEY');
+  static const String _apiKey = "089ff97e142c4b012df105099009a50b";
+  static const int _maxAttempts = 3;
+  static final HttpClient _httpClient = HttpClient()
+    ..connectionTimeout = const Duration(seconds: 10);
   Future<List<Movie>> fetchMovies(String path, {int page = 1}) {
     return _fetchMovies(
       path,
@@ -713,34 +710,60 @@ class TmdbClient {
       },
     );
 
-    final client = HttpClient();
-    try {
-      final request = await client.getUrl(uri);
-      final response = await request.close();
-      final body = await response.transform(utf8.decoder).join();
-
-      if (response.statusCode < 200 || response.statusCode >= 300) {
-        throw HttpException('TMDB request failed (${response.statusCode}): $body');
-      }
-
-      final decoded = jsonDecode(body);
-      if (decoded is! Map<String, dynamic>) {
-        throw const FormatException('Unexpected TMDB response format.');
-      }
-
-      final results = decoded['results'];
-      if (results is! List) {
-        return [];
-      }
-
-      return results
-          .whereType<Map<String, dynamic>>()
-          .map(Movie.fromJson)
-          .where((movie) => movie.title.isNotEmpty)
-          .toList();
-    } finally {
-      client.close(force: true);
+    final body = await _requestBodyWithRetry(uri);
+    final decoded = jsonDecode(body);
+    if (decoded is! Map<String, dynamic>) {
+      throw const FormatException('Unexpected TMDB response format.');
     }
+
+    final results = decoded['results'];
+    if (results is! List) {
+      return [];
+    }
+
+    return results
+        .whereType<Map<String, dynamic>>()
+        .map(Movie.fromJson)
+        .where((movie) => movie.title.isNotEmpty)
+        .toList();
+  }
+
+  Future<String> _requestBodyWithRetry(Uri uri) async {
+    Object? lastError;
+    for (var attempt = 1; attempt <= _maxAttempts; attempt++) {
+      try {
+        final request = await _httpClient.getUrl(uri).timeout(const Duration(seconds: 10));
+        request.headers.set(HttpHeaders.acceptHeader, 'application/json');
+
+        final response = await request.close().timeout(const Duration(seconds: 15));
+        final body = await response.transform(utf8.decoder).join();
+
+        if (response.statusCode < 200 || response.statusCode >= 300) {
+          if (response.statusCode >= 500 && attempt < _maxAttempts) {
+            await Future.delayed(Duration(milliseconds: 300 * attempt));
+            continue;
+          }
+          throw HttpException('TMDB request failed (${response.statusCode}): $body');
+        }
+
+        return body;
+      } on SocketException catch (error) {
+        lastError = error;
+      } on HandshakeException catch (error) {
+        lastError = error;
+      } on TimeoutException catch (error) {
+        lastError = error;
+      }
+
+      if (attempt < _maxAttempts) {
+        await Future.delayed(Duration(milliseconds: 300 * attempt));
+      }
+    }
+
+    throw HttpException(
+      'TMDB network error after $_maxAttempts attempts: $lastError. '
+      'Check internet, VPN, firewall, or DNS on this device.',
+    );
   }
 }
 
