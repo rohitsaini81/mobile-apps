@@ -1,5 +1,4 @@
 import java.util.Properties
-import java.io.FileInputStream
 
 plugins {
     id("com.android.application")
@@ -9,9 +8,8 @@ plugins {
 
 val keystoreProperties = Properties()
 val keystorePropertiesFile = rootProject.file("key.properties")
-
 if (keystorePropertiesFile.exists()) {
-    keystoreProperties.load(FileInputStream(keystorePropertiesFile))
+    keystoreProperties.load(keystorePropertiesFile.inputStream())
 }
 
 android {
@@ -49,7 +47,6 @@ android {
         release {
             signingConfig = signingConfigs.getByName("release")
             isMinifyEnabled = false
-            isShrinkResources = false
         }
     }
 }
