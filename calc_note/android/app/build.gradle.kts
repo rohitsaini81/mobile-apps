@@ -13,10 +13,6 @@ if (keystorePropertiesFile.exists()) {
     keystoreProperties.load(keystorePropertiesFile.inputStream())
 }
 
-fun requireKeystoreProperty(name: String): String =
-    keystoreProperties.getProperty(name)
-        ?: error("Missing '$name' in android/key.properties for release signing.")
-
 android {
     namespace = "com.example.calc_note"
     compileSdk = flutter.compileSdkVersion
@@ -44,10 +40,10 @@ android {
 
     signingConfigs {
         create("release") {
-            keyAlias = requireKeystoreProperty("keyAlias")
-            keyPassword = requireKeystoreProperty("keyPassword")
-            storeFile = file(requireKeystoreProperty("storeFile"))
-            storePassword = requireKeystoreProperty("storePassword")
+            keyAlias = keystoreProperties["keyAlias"] as String
+            keyPassword = keystoreProperties["keyPassword"] as String
+            storeFile = file(keystoreProperties["storeFile"] as String)
+            storePassword = keystoreProperties["storePassword"] as String
         }
     }
 
@@ -65,7 +61,6 @@ android {
         release {
             signingConfig = signingConfigs.getByName("release")
             isMinifyEnabled = false
-            isShrinkResources = false
         }
     }
 }
