@@ -1,0 +1,73 @@
+name: Flutter Android Builds
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/flutter-android-builds.yml'
+      - 'calc_note/**'
+      - 'netmirror/**'
+      - 'whatsapp_saver/**'
+  pull_request:
+    paths:
+      - '.github/workflows/flutter-android-builds.yml'
+      - 'calc_note/**'
+      - 'netmirror/**'
+      - 'whatsapp_saver/**'
+
+jobs:
+  build-android:
+    name: Build ${{ matrix.app }} Android artifacts
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        app:
+          - calc_note
+          - netmirror
+          - whatsapp_saver
+
+    defaults:
+      run:
+        working-directory: ${{ matrix.app }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Build APK
+        run: flutter build apk --release --no-shrink
+
+      - name: Build appbundle
+        run: flutter build appbundle --release --no-shrink
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.app }}-apk
+          path: ${{ matrix.app }}/build/app/outputs/flutter-apk/app-release.apk
+          if-no-files-found: error
+
+      - name: Upload AAB
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.app }}-aab
+          path: ${{ matrix.app }}/build/app/outputs/bundle/release/app-release.aab
+          if-no-files-found: error
