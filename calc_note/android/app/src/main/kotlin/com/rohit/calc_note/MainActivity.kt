@@ -1,4 +1,4 @@
-package com.example.calc_note
+package com.rohit.calc_note
 
 import io.flutter.embedding.android.FlutterActivity
 
